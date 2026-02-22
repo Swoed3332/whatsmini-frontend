@@ -30,6 +30,10 @@ function addMsg(text, who = "them") {
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 
+function setAuthStatus(t) {
+  $("authStatus").innerText = t;
+}
+
 // ================= SESSION =================
 function saveSession() {
   localStorage.setItem("wm_token", token);
@@ -48,19 +52,60 @@ function clearSession() {
   username = null;
 }
 
-// ================= API =================
-async function api(path, method = "GET", body = null) {
-  const res = await fetch(API_BASE + path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined
-  });
+// ================= API (FIXED) =================
+// - Timeout eklendi (AbortController)
+// - Retry eklendi (Render cold start vs.)
+// - JSON parse hatalarında bile body'yi okuyup mesaj verebilir
+async function api(path, method = "GET", body = null, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 20000; // 20s
+  const retries = opts.retries ?? 1;         // 1 retry
+  const retryDelayMs = opts.retryDelayMs ?? 1500;
 
-  const data = await res.json().catch(() => ({}));
-  return { res, data };
+  const url = API_BASE + path;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal
+      });
+
+      // JSON olmayabilir ihtimali: önce text al, sonra json dene
+      const raw = await res.text().catch(() => "");
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { raw };
+      }
+
+      return { res, data };
+    } catch (err) {
+      // son deneme değilse retry
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        continue;
+      }
+
+      // burada genelde CORS / timeout / network
+      const msg =
+        err?.name === "AbortError"
+          ? `Timeout (${timeoutMs}ms) - backend geç cevap veriyor`
+          : (err?.message || "Network/CORS hatası");
+
+      throw new Error(msg);
+    } finally {
+      clearTimeout(t);
+    }
+  }
 }
 
-// ================= REGISTER =================
+// ================= REGISTER (FIXED: try/catch + daha iyi hata) =================
 $("btnRegister").onclick = async (e) => {
   e.preventDefault();
 
@@ -68,24 +113,30 @@ $("btnRegister").onclick = async (e) => {
   const pass = $("password").value;
 
   if (!user || !pass) {
-    $("authStatus").innerText = "Boş alan var.";
+    setAuthStatus("Boş alan var.");
     return;
   }
 
-  const { res, data } = await api("/api/register", "POST", {
-    username: user,
-    password: pass
-  });
+  try {
+    const { res, data } = await api("/api/register", "POST", {
+      username: user,
+      password: pass
+    }, { retries: 1, timeoutMs: 25000 });
 
-  if (!res.ok) {
-    $("authStatus").innerText = data.detail || "Register error";
-    return;
+    if (!res.ok) {
+      // FastAPI genelde {"detail": "..."} döndürür
+      const detail = data?.detail ?? data?.raw ?? `HTTP ${res.status}`;
+      setAuthStatus("REGISTER ERROR: " + detail);
+      return;
+    }
+
+    setAuthStatus("Register OK ✅ Login yap.");
+  } catch (err) {
+    setAuthStatus("REGISTER FAIL: " + err.message);
   }
-
-  $("authStatus").innerText = "Register OK ✅ Login yap.";
 };
 
-// ================= LOGIN =================
+// ================= LOGIN (FIXED: daha iyi hata + timeout/retry) =================
 $("btnLogin").onclick = async (e) => {
   e.preventDefault();
 
@@ -93,7 +144,7 @@ $("btnLogin").onclick = async (e) => {
   const pass = $("password").value;
 
   if (!user || !pass) {
-    $("authStatus").innerText = "Boş alan var.";
+    setAuthStatus("Boş alan var.");
     return;
   }
 
@@ -101,10 +152,11 @@ $("btnLogin").onclick = async (e) => {
     const { res, data } = await api("/api/login", "POST", {
       username: user,
       password: pass
-    });
+    }, { retries: 1, timeoutMs: 25000 });
 
     if (!res.ok) {
-      $("authStatus").innerText = data.detail || "Login error";
+      const detail = data?.detail ?? data?.raw ?? `HTTP ${res.status}`;
+      setAuthStatus("LOGIN ERROR: " + detail);
       return;
     }
 
@@ -112,12 +164,12 @@ $("btnLogin").onclick = async (e) => {
     username = data.username;
     saveSession();
 
-    $("authStatus").innerText = "Login OK ✅";
+    setAuthStatus("Login OK ✅");
     showChat();
     connectWS();
-
   } catch (err) {
-    $("authStatus").innerText = "Network error ❌";
+    // Artık sadece "Network error" değil, gerçek sebep görünecek
+    setAuthStatus("LOGIN FAIL: " + err.message);
   }
 };
 
@@ -125,10 +177,11 @@ $("btnLogin").onclick = async (e) => {
 $("btnLogout").onclick = (e) => {
   e.preventDefault();
 
-  if (ws) ws.close();
+  try { if (ws) ws.close(); } catch {}
   clearSession();
   $("messages").innerHTML = "";
   showAuth();
+  setAuthStatus("Çıkış yapıldı.");
 };
 
 // ================= WEBSOCKET =================
@@ -137,26 +190,21 @@ function connectWS() {
 
   ws = new WebSocket(`${WS_BASE}/ws?token=${encodeURIComponent(token)}`);
 
-  ws.onopen = () => {
-    addMsg("WS bağlı ✅");
-  };
+  ws.onopen = () => addMsg("WS bağlı ✅");
 
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      addMsg(`${msg.from}: ${msg.text}`);
+      if (msg?.from && msg?.text) addMsg(`${msg.from}: ${msg.text}`);
+      else addMsg(e.data);
     } catch {
       addMsg(e.data);
     }
   };
 
-  ws.onerror = () => {
-    addMsg("WS hata ❌");
-  };
+  ws.onerror = () => addMsg("WS hata ❌");
 
-  ws.onclose = () => {
-    addMsg("WS kapandı ❌");
-  };
+  ws.onclose = () => addMsg("WS kapandı ❌");
 }
 
 // ================= SEND MESSAGE =================
@@ -170,12 +218,14 @@ $("btnSend").onclick = (e) => {
     addMsg("WS bağlı değil.", "them");
     return;
   }
-
-  if (!to || !text) return;
+  if (!to) {
+    addMsg("toUser boş.", "them");
+    return;
+  }
+  if (!text) return;
 
   ws.send(JSON.stringify({ to, text }));
   addMsg(`Ben → ${to}: ${text}`, "me");
-
   $("msg").value = "";
 };
 
