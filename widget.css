@@ -1,40 +1,21 @@
-/* ===== BACKGROUND ===== */
+/* ===== SAYFA ===== */
 body {
   margin: 0;
-  height: 100vh;
   font-family: system-ui, Arial;
+  background: radial-gradient(circle at 20% 20%, #1b2a6b, transparent 40%),
+              radial-gradient(circle at 80% 80%, #6b1bb3, transparent 40%),
+              #060b18;
   color: white;
+}
+
+/* ===== ORTALAMA ===== */
+.auth-wrapper {
+  position: fixed;
+  inset: 0;
 
   display: flex;
   align-items: center;
   justify-content: center;
-
-  background: radial-gradient(circle at 20% 20%, #1b2a6b, transparent 40%),
-              radial-gradient(circle at 80% 80%, #6b1bb3, transparent 40%),
-              #060b18;
-
-  overflow: hidden;
-}
-
-/* floating flowers (çiçek efekti) */
-body::before,
-body::after {
-  content: "🌸 ✨ 🌺 🌼";
-  position: absolute;
-  font-size: 40px;
-  opacity: 0.15;
-  animation: float 20s linear infinite;
-}
-
-body::after {
-  bottom: -50px;
-  right: 10%;
-  animation-duration: 26s;
-}
-
-@keyframes float {
-  0% { transform: translateY(0) rotate(0); }
-  100% { transform: translateY(-120vh) rotate(360deg); }
 }
 
 /* ===== CARD ===== */
@@ -43,8 +24,8 @@ body::after {
   padding: 32px;
   border-radius: 18px;
 
+  background: rgba(20,30,60,0.7);
   backdrop-filter: blur(20px);
-  background: rgba(20, 30, 60, 0.7);
 
   box-shadow:
     0 0 40px rgba(70,120,255,0.25),
@@ -53,19 +34,12 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 14px;
-
-  animation: pop 0.5s ease;
 }
 
-@keyframes pop {
-  from { transform: scale(.9); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
+/* ===== TITLE ===== */
 .auth-card h2 {
   text-align: center;
-  margin-bottom: 8px;
-  letter-spacing: 1px;
+  margin: 0 0 8px;
 }
 
 /* ===== INPUT ===== */
@@ -73,10 +47,8 @@ body::after {
   padding: 13px;
   border-radius: 10px;
   border: 1px solid #2b3b75;
-
   background: #0e1735;
   color: white;
-
   transition: 0.25s;
 }
 
@@ -92,7 +64,6 @@ body::after {
   gap: 12px;
 }
 
-/* glow button */
 .auth-actions button {
   flex: 1;
   padding: 11px;
@@ -108,7 +79,6 @@ body::after {
   overflow: hidden;
 }
 
-/* ışık hover */
 .auth-actions button:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow:
@@ -116,7 +86,7 @@ body::after {
     0 0 40px rgba(120,160,255,0.3);
 }
 
-/* shine efekti */
+/* shine */
 .auth-actions button::after {
   content: "";
   position: absolute;
