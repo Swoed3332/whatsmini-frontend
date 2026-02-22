@@ -1,4 +1,15 @@
-<div class="auth-wrapper">
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>WhatsMini</title>
+<link rel="stylesheet" href="/widget.css" />
+</head>
+
+<body>
+
+<!-- AUTH -->
+<div id="auth" class="auth-wrapper">
   <div class="auth-card">
     <h2>🌸 WhatsMini</h2>
 
@@ -13,3 +24,24 @@
     <div id="authStatus"></div>
   </div>
 </div>
+
+<!-- CHAT -->
+<div id="chat" class="hidden">
+
+  <div style="padding:10px">
+    <button id="btnLogout">Logout</button>
+  </div>
+
+  <div id="messages" style="height:300px; overflow:auto;"></div>
+
+  <div style="display:flex; gap:8px; padding:10px;">
+    <input id="toUser" placeholder="to user" />
+    <input id="msg" placeholder="message" />
+    <button id="btnSend">Send</button>
+  </div>
+
+</div>
+
+<script src="/widget.js"></script>
+</body>
+</html>
