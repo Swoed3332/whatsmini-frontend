@@ -1,25 +1,15 @@
-<!doctype html>
-<html>
-<body style="margin:0; height:100vh; background:#111;">
-  <h2 style="color:#fff; font-family:Arial; padding:12px;">Benim Web Sitem</h2>
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <h2>🌸 WhatsMini</h2>
 
-  <!-- Sağ altta widget -->
- <iframe
-  src="/widget.html"
-    style="
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      width: 380px;
-      height: 560px;
-      border: 0;
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 12px 40px rgba(0,0,0,.45);
-    "
-  ></iframe>
-</body>
-</html>
+    <input id="username" placeholder="Username" />
+    <input id="password" type="password" placeholder="Password" />
 
+    <div class="auth-actions">
+      <button id="btnRegister">Register</button>
+      <button id="btnLogin">Login</button>
+    </div>
 
-
+    <div id="authStatus"></div>
+  </div>
+</div>
