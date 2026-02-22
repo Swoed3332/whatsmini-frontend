@@ -1,5 +1,6 @@
 // === AYAR ===
 const API_BASE = "https://whatsmini.onrender.com";
+const WS_BASE = API_BASE.replace("https://", "wss://");
 // ============
 
 let token = null;
@@ -88,7 +89,7 @@ $("btnLogin").onclick = async (e) => {
   }
 
   try {
-    const { res, data } = await apiJson("/api/login", "POST", { username, password });
+    const { res, data } = await Json("//login", "POST", { username, password });
 
     if (!res.ok) {
       setAuthStatus("LOGIN ERROR: " + (data.detail || "error"));
@@ -122,19 +123,18 @@ $("btnLogout").onclick = (e) => {
 };
 
 // ===================== WEBSOCKET =====================
-function connectWs() {
+function connectWS() {
   if (!token) return;
 
+  // API_BASE örn: https://whatsmini.onrender.com
   const WS_BASE = API_BASE
-  .replace("https://", "wss://")
-  .replace("http://", "ws://");
+    .replace("https://", "wss://")
+    .replace("http://", "ws://");
 
-const wsUrl = `${WS_BASE}/ws?token=${encodeURIComponent(token)}`;
+  const wsUrl = `${WS_BASE}/ws?token=${encodeURIComponent(token)}`;
   ws = new WebSocket(wsUrl);
 
-  ws.onopen = () => {
-    addMsg("WS bağlandı ✅", "them");
-  };
+  ws.onopen = () => addMsg("WS bağlandı ✅", "them");
 
   ws.onmessage = (e) => {
     try {
@@ -144,6 +144,10 @@ const wsUrl = `${WS_BASE}/ws?token=${encodeURIComponent(token)}`;
     } catch {
       addMsg(e.data, "them");
     }
+  };
+
+  ws.onerror = () => {
+    addMsg("WS hata ❌", "them");
   };
 
   ws.onclose = () => {
@@ -283,4 +287,5 @@ async function uploadMyPublicKeySafe() {
   } else {
     showAuth();
   }
+
 })();
