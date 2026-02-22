@@ -1,8 +1,6 @@
 // ================= CONFIG =================
 const API_BASE = "https://whatsmini.onrender.com";
-const WS_BASE = API_BASE
-  .replace("https://", "wss://")
-  .replace("http://", "ws://");
+const WS_BASE = API_BASE.replace("https://", "wss://").replace("http://", "ws://");
 
 // ================= STATE =================
 let token = null;
@@ -16,12 +14,10 @@ function showAuth() {
   $("auth").classList.remove("hidden");
   $("chat").classList.add("hidden");
 }
-
 function showChat() {
   $("auth").classList.add("hidden");
   $("chat").classList.remove("hidden");
 }
-
 function addMsg(text, who = "them") {
   const d = document.createElement("div");
   d.className = "msg " + (who === "me" ? "me" : "them");
@@ -29,7 +25,6 @@ function addMsg(text, who = "them") {
   $("messages").appendChild(d);
   $("messages").scrollTop = $("messages").scrollHeight;
 }
-
 function setAuthStatus(t) {
   $("authStatus").innerText = t;
 }
@@ -39,12 +34,10 @@ function saveSession() {
   localStorage.setItem("wm_token", token);
   localStorage.setItem("wm_user", username);
 }
-
 function loadSession() {
   token = localStorage.getItem("wm_token");
   username = localStorage.getItem("wm_user");
 }
-
 function clearSession() {
   localStorage.removeItem("wm_token");
   localStorage.removeItem("wm_user");
@@ -52,14 +45,21 @@ function clearSession() {
   username = null;
 }
 
-// ================= API (FIXED) =================
-// - Timeout eklendi (AbortController)
-// - Retry eklendi (Render cold start vs.)
-// - JSON parse hatalarında bile body'yi okuyup mesaj verebilir
+// ================= API =================
+async function wakeBackend() {
+  try {
+    await fetch(API_BASE + "/docs", { method: "GET" });
+  } catch {}
+}
+
 async function api(path, method = "GET", body = null, opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? 20000; // 20s
-  const retries = opts.retries ?? 1;         // 1 retry
-  const retryDelayMs = opts.retryDelayMs ?? 1500;
+  const timeoutMs = opts.timeoutMs ?? 30000; // 30s
+  const retries = opts.retries ?? 3;
+  const retryDelayMs = opts.retryDelayMs ?? 2000;
+
+  if (method !== "GET") {
+    await wakeBackend();
+  }
 
   const url = API_BASE + path;
 
@@ -75,7 +75,6 @@ async function api(path, method = "GET", body = null, opts = {}) {
         signal: ctrl.signal
       });
 
-      // JSON olmayabilir ihtimali: önce text al, sonra json dene
       const raw = await res.text().catch(() => "");
       let data = {};
       try {
@@ -86,18 +85,14 @@ async function api(path, method = "GET", body = null, opts = {}) {
 
       return { res, data };
     } catch (err) {
-      // son deneme değilse retry
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, retryDelayMs));
         continue;
       }
-
-      // burada genelde CORS / timeout / network
       const msg =
         err?.name === "AbortError"
-          ? `Timeout (${timeoutMs}ms) - backend geç cevap veriyor`
-          : (err?.message || "Network/CORS hatası");
-
+          ? `Timeout (${timeoutMs}ms) - Render uyanıyor olabilir`
+          : (err?.message || "Failed to fetch (CORS/Network)");
       throw new Error(msg);
     } finally {
       clearTimeout(t);
@@ -105,7 +100,7 @@ async function api(path, method = "GET", body = null, opts = {}) {
   }
 }
 
-// ================= REGISTER (FIXED: try/catch + daha iyi hata) =================
+// ================= REGISTER =================
 $("btnRegister").onclick = async (e) => {
   e.preventDefault();
 
@@ -121,10 +116,9 @@ $("btnRegister").onclick = async (e) => {
     const { res, data } = await api("/api/register", "POST", {
       username: user,
       password: pass
-    }, { retries: 1, timeoutMs: 25000 });
+    }, { retries: 3, timeoutMs: 30000 });
 
     if (!res.ok) {
-      // FastAPI genelde {"detail": "..."} döndürür
       const detail = data?.detail ?? data?.raw ?? `HTTP ${res.status}`;
       setAuthStatus("REGISTER ERROR: " + detail);
       return;
@@ -136,7 +130,7 @@ $("btnRegister").onclick = async (e) => {
   }
 };
 
-// ================= LOGIN (FIXED: daha iyi hata + timeout/retry) =================
+// ================= LOGIN =================
 $("btnLogin").onclick = async (e) => {
   e.preventDefault();
 
@@ -152,7 +146,7 @@ $("btnLogin").onclick = async (e) => {
     const { res, data } = await api("/api/login", "POST", {
       username: user,
       password: pass
-    }, { retries: 1, timeoutMs: 25000 });
+    }, { retries: 3, timeoutMs: 30000 });
 
     if (!res.ok) {
       const detail = data?.detail ?? data?.raw ?? `HTTP ${res.status}`;
@@ -168,7 +162,6 @@ $("btnLogin").onclick = async (e) => {
     showChat();
     connectWS();
   } catch (err) {
-    // Artık sadece "Network error" değil, gerçek sebep görünecek
     setAuthStatus("LOGIN FAIL: " + err.message);
   }
 };
@@ -203,7 +196,6 @@ function connectWS() {
   };
 
   ws.onerror = () => addMsg("WS hata ❌");
-
   ws.onclose = () => addMsg("WS kapandı ❌");
 }
 
@@ -232,7 +224,6 @@ $("btnSend").onclick = (e) => {
 // ================= AUTO RESTORE =================
 (function init() {
   loadSession();
-
   if (token && username) {
     showChat();
     connectWS();
