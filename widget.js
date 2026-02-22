@@ -1,27 +1,28 @@
-// === AYAR ===
+// ================= CONFIG =================
 const API_BASE = "https://whatsmini.onrender.com";
-const WS_BASE = API_BASE.replace("https://", "wss://");
-// ============
+const WS_BASE = API_BASE
+  .replace("https://", "wss://")
+  .replace("http://", "ws://");
 
+// ================= STATE =================
 let token = null;
-let myUser = null;
+let username = null;
 let ws = null;
 
 const $ = (id) => document.getElementById(id);
 
-function setAuthStatus(t) { $("authStatus").innerText = t; }
-function setKeyStatus(t) { $("keyStatus").innerText = t; }
-
+// ================= UI HELPERS =================
 function showAuth() {
   $("auth").classList.remove("hidden");
   $("chat").classList.add("hidden");
 }
+
 function showChat() {
   $("auth").classList.add("hidden");
   $("chat").classList.remove("hidden");
 }
 
-function addMsg(text, who) {
+function addMsg(text, who = "them") {
   const d = document.createElement("div");
   d.className = "msg " + (who === "me" ? "me" : "them");
   d.innerText = text;
@@ -29,263 +30,163 @@ function addMsg(text, who) {
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 
+// ================= SESSION =================
 function saveSession() {
-  if (token && myUser) {
-    localStorage.setItem("wm_token", token);
-    localStorage.setItem("wm_user", myUser);
-  }
-}
-function loadSession() {
-  token = localStorage.getItem("wm_token");
-  myUser = localStorage.getItem("wm_user");
-}
-function clearSession() {
-  token = null;
-  myUser = null;
-  localStorage.removeItem("wm_token");
-  localStorage.removeItem("wm_user");
+  localStorage.setItem("wm_token", token);
+  localStorage.setItem("wm_user", username);
 }
 
-async function apiJson(path, method, bodyObj) {
+function loadSession() {
+  token = localStorage.getItem("wm_token");
+  username = localStorage.getItem("wm_user");
+}
+
+function clearSession() {
+  localStorage.removeItem("wm_token");
+  localStorage.removeItem("wm_user");
+  token = null;
+  username = null;
+}
+
+// ================= API =================
+async function api(path, method = "GET", body = null) {
   const res = await fetch(API_BASE + path, {
     method,
-    headers: { "Content-Type": "application/json" },
-    body: bodyObj ? JSON.stringify(bodyObj) : undefined
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined
   });
+
   const data = await res.json().catch(() => ({}));
   return { res, data };
 }
 
-// ===================== REGISTER =====================
+// ================= REGISTER =================
 $("btnRegister").onclick = async (e) => {
   e.preventDefault();
-  const username = $("username").value.trim();
-  const password = $("password").value;
 
-  if (!username || !password) {
-    setAuthStatus("username/password boş olamaz");
+  const user = $("username").value.trim();
+  const pass = $("password").value;
+
+  if (!user || !pass) {
+    $("authStatus").innerText = "Boş alan var.";
     return;
   }
 
-  const { res, data } = await apiJson("/api/register", "POST", { username, password });
+  const { res, data } = await api("/api/register", "POST", {
+    username: user,
+    password: pass
+  });
 
   if (!res.ok) {
-    setAuthStatus("REGISTER ERROR: " + (data.detail || "error"));
+    $("authStatus").innerText = data.detail || "Register error";
     return;
   }
 
-  setAuthStatus("Register OK ✅ Şimdi Login yap.");
+  $("authStatus").innerText = "Register OK ✅ Login yap.";
 };
 
-// ===================== LOGIN =====================
+// ================= LOGIN =================
 $("btnLogin").onclick = async (e) => {
   e.preventDefault();
-  const username = $("username").value.trim();
-  const password = $("password").value;
 
-  if (!username || !password) {
-    setAuthStatus("username/password boş olamaz");
+  const user = $("username").value.trim();
+  const pass = $("password").value;
+
+  if (!user || !pass) {
+    $("authStatus").innerText = "Boş alan var.";
     return;
   }
 
   try {
-    const { res, data } = await Json("//login", "POST", { username, password });
+    const { res, data } = await api("/api/login", "POST", {
+      username: user,
+      password: pass
+    });
 
     if (!res.ok) {
-      setAuthStatus("LOGIN ERROR: " + (data.detail || "error"));
+      $("authStatus").innerText = data.detail || "Login error";
       return;
     }
 
     token = data.token;
-    myUser = data.username;
+    username = data.username;
     saveSession();
 
-    setAuthStatus("Login OK ✅");
+    $("authStatus").innerText = "Login OK ✅";
     showChat();
-    connectWs();
-
-    // login sonrası key upload (login’i bozmaz)
-    uploadMyPublicKeySafe();
+    connectWS();
 
   } catch (err) {
-    setAuthStatus("Network error (backend açık mı?)");
+    $("authStatus").innerText = "Network error ❌";
   }
 };
 
-// ===================== LOGOUT =====================
+// ================= LOGOUT =================
 $("btnLogout").onclick = (e) => {
   e.preventDefault();
-  try { if (ws) ws.close(); } catch {}
+
+  if (ws) ws.close();
   clearSession();
   $("messages").innerHTML = "";
-  setAuthStatus("Çıkış yapıldı.");
   showAuth();
 };
 
-// ===================== WEBSOCKET =====================
+// ================= WEBSOCKET =================
 function connectWS() {
   if (!token) return;
 
-  // API_BASE örn: https://whatsmini.onrender.com
-  const WS_BASE = API_BASE
-    .replace("https://", "wss://")
-    .replace("http://", "ws://");
+  ws = new WebSocket(`${WS_BASE}/ws?token=${encodeURIComponent(token)}`);
 
-  const wsUrl = `${WS_BASE}/ws?token=${encodeURIComponent(token)}`;
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => addMsg("WS bağlandı ✅", "them");
+  ws.onopen = () => {
+    addMsg("WS bağlı ✅");
+  };
 
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.text) addMsg(`${msg.from}: ${msg.text}`, "them");
-      else addMsg(e.data, "them");
+      addMsg(`${msg.from}: ${msg.text}`);
     } catch {
-      addMsg(e.data, "them");
+      addMsg(e.data);
     }
   };
 
   ws.onerror = () => {
-    addMsg("WS hata ❌", "them");
+    addMsg("WS hata ❌");
   };
 
   ws.onclose = () => {
-    addMsg("WS kapandı ❌ (backend restart olduysa normal)", "them");
+    addMsg("WS kapandı ❌");
   };
 }
 
-// ===================== SEND =====================
+// ================= SEND MESSAGE =================
 $("btnSend").onclick = (e) => {
   e.preventDefault();
+
   const to = $("toUser").value.trim();
   const text = $("msg").value;
 
   if (!ws || ws.readyState !== 1) {
-    addMsg("WS bağlı değil. Login olduktan sonra tekrar dene.", "them");
+    addMsg("WS bağlı değil.", "them");
     return;
   }
-  if (!to) {
-    addMsg("toUser boş. Kime göndereceğini yaz.", "them");
-    return;
-  }
-  if (!text) return;
+
+  if (!to || !text) return;
 
   ws.send(JSON.stringify({ to, text }));
   addMsg(`Ben → ${to}: ${text}`, "me");
+
   $("msg").value = "";
 };
 
-// ===================== KEY FETCH (sadece kontrol) =====================
-$("btnLoadKey").onclick = async (e) => {
-  e.preventDefault();
-  const to = $("toUser").value.trim();
-  if (!to) { setKeyStatus("toUser boş"); return; }
-
-  try {
-    const res = await fetch(API_BASE + "/api/keys/" + encodeURIComponent(to));
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      setKeyStatus("Key yok (404). Karşı taraf login oldu mu?");
-      return;
-    }
-    setKeyStatus("Key var ✅");
-  } catch {
-    setKeyStatus("Key kontrol hatası (backend?)");
-  }
-};
-
-// ===================== UPLOAD =====================
-$("btnUpload").onclick = async (e) => {
-  e.preventDefault();
-  if (!token) { addMsg("Önce login ol.", "them"); return; }
-
-  const f = $("file").files[0];
-  if (!f) { addMsg("Dosya seç.", "them"); return; }
-
-  const fd = new FormData();
-  fd.append("token", token);
-  fd.append("file", f);
-
-  try {
-    const res = await fetch(API_BASE + "/api/upload", {
-      method: "POST",
-      body: fd
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      addMsg("Upload error: " + (data.detail || "error"), "them");
-      return;
-    }
-
-    // ⭐ FULL URL FIX
-    const url = API_BASE + data.url;
-
-    // kendi ekranda göster
-    addMsg("Dosya: " + url, "me");
-
-    // ⭐ KARŞIYA GÖNDER (senin mesaj sistemine uyumlu)
-    const to = $("toUser").value.trim();
-
-    if (!to) {
-      addMsg("toUser yazmadan link gönderemezsin.", "them");
-      return;
-    }
-
-    if (!ws || ws.readyState !== 1) {
-      addMsg("WS bağlı değil, link gönderilemedi.", "them");
-      return;
-    }
-
-    ws.send(JSON.stringify({
-      to,
-      text: "Dosya: " + url
-    }));
-
-  } catch {
-    addMsg("Upload network error (backend açık mı?)", "them");
-  }
-};
-
-
-// ===================== KEY UPLOAD (login sonrası) =====================
-async function uploadMyPublicKeySafe() {
-  // Eğer tarayıcı crypto desteklemiyorsa hiç dert değil.
-  if (!window.crypto?.subtle) return;
-
-  try {
-    const keyPair = await crypto.subtle.generateKey(
-      { name: "ECDH", namedCurve: "P-256" },
-      true,
-      ["deriveKey", "deriveBits"]
-    );
-
-    const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-
-    await fetch(API_BASE + "/api/keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, public_key_jwk: jwk })
-    });
-  } catch (e) {
-    // Key upload başarısız olsa bile login bozulmasın.
-    console.warn("key upload fail", e);
-  }
-}
-
-// ===================== AUTO-RESTORE SESSION =====================
+// ================= AUTO RESTORE =================
 (function init() {
   loadSession();
-  if (token && myUser) {
+
+  if (token && username) {
     showChat();
-    connectWs();
-    // sayfa yenilense bile key tekrar yüklemeyi dene
-    uploadMyPublicKeySafe();
+    connectWS();
   } else {
     showAuth();
   }
-
 })();
